@@ -1,0 +1,18 @@
+{
+  "uuid": "otools-colorpicker",
+  "packid": "otools-colorpicker",
+  "displayName": "Color Picker",
+  "displayNameCN": "屏幕取色",
+  "developerName": "OTools",
+  "summary": "启动即进入原生全屏取色并自动复制，手动打开面板查看色卡、格式和最近颜色。",
+  "version": "0.1.0",
+  "entry": "dist/index.html",
+  "devUrl": "http://127.0.0.1:5994",
+  "logo": "logo.svg",
+  "icon": "🎨",
+  "key": ["取色", "颜色", "color", "picker", "eyedropper"],
+  "screenshots": [],
+  "screenCapture": true,
+  "openMode": "panel",
+  "directLaunch": true
+}
