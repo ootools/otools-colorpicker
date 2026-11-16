@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "description": "A standalone OTools custom-window screen color picker.",
-  "engines": { "node": ">=22.12" },
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5994",
     "build": "vue-tsc --noEmit && vite build",
@@ -16,7 +18,7 @@
     "vue": "3.5.27",
     "@tauri-apps/api": "2.10.1",
     "@tauri-apps/plugin-dialog": "2.6.0",
-    "otools-plugin-sdk": "file:vendor/otools-plugin-sdk"
+    "otools-plugin-sdk": "^0.3.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "5.2.4",
