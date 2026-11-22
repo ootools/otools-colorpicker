@@ -14,5 +14,6 @@
   "screenshots": [],
   "screenCapture": true,
   "openMode": "panel",
-  "directLaunch": true
+  "directLaunch": true,
+  "openSourceUrl": "https://github.com/ootools/otools-colorpicker"
 }
