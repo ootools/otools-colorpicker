@@ -59,4 +59,4 @@ SDK 依赖为 npm 发布的 `otools-plugin-sdk@^0.3.0`（版本锁定在 `pnpm-l
 
 自动测试覆盖颜色计算与历史、1×1 读取/解码/复制/释放顺序、取消和迟到结果、冷启动和重复事件、权限与复制确认。真实权限、多显示器、原生覆盖层及隐藏 Panel 的直达启动仍需在对应桌面宿主验收。
 
-本仓库已有远程仓库 `ootools/otools-colorpicker`（`main` 已同步），但尚未打 tag、未创建 GitHub Release，也未上架插件市场。本次仅升级面板功能，不涉及发布。
+本仓库已发布 **v0.1.0**：GitHub Release 标签 `v0.1.0`（含 `otools-colorpicker-0.1.0.oplg`、`plugin.json`、`logo.svg`、`SHA256SUMS`），并已上架 OTools 插件市场（单合包 `packageMode=0`）。推 `v<版本>` 标签会自动构建、发 Release 并同步上架；`release` environment 已配置 `XYCLOUD_PAT` 与 `OTOOLS_PUBLISH_MARKET=true`。
