@@ -6,5 +6,6 @@ export default defineConfig({
   base: './',
   plugins: [vue(), otoolsTauriShimPlugin()],
   server: { host: '127.0.0.1', port: 5994, strictPort: true },
-  test: { environment: 'node' },
+  // scripts/*.test.mjs 用 node:test（CI 里单独跑），不要交给 vitest。
+  test: { environment: 'node', include: ['src/**/*.test.ts'] },
 });
