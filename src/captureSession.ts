@@ -1,5 +1,16 @@
-import { CaptureError, type CaptureApi, type CaptureErrorCode } from 'otools-plugin-sdk/capture-factory';
+import type { CaptureApi, CaptureErrorCode } from 'otools-plugin-sdk/capture';
 import type { RGB } from './colors';
+
+/** Local error type: SDK 0.3+ no longer ships the capture-factory runtime module. */
+export class CaptureError extends Error {
+  readonly code: CaptureErrorCode;
+
+  constructor(code: CaptureErrorCode, message: string) {
+    super(message);
+    this.name = 'CaptureError';
+    this.code = code;
+  }
+}
 
 export type ColorCaptureTransport = Pick<CaptureApi, 'select' | 'readImage' | 'release'>;
 

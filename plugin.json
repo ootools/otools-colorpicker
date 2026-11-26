@@ -15,5 +15,8 @@
   "screenCapture": true,
   "openMode": "panel",
   "directLaunch": true,
+  "trayActions": [
+    { "id": "pick", "title": "Pick Color", "titleCN": "屏幕取色", "keyword": "launch" }
+  ],
   "openSourceUrl": "https://github.com/ootools/otools-colorpicker"
 }

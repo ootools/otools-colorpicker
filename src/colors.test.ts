@@ -1,11 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import {
   appendRecent,
+  cmykToRgb,
   formatColor,
+  hslToRgb,
+  hsvToRgb,
+  labToRgb,
   mapPointerToPixel,
   normalizeHex,
+  parseColor,
+  rgbToCmyk,
   rgbToHex,
   rgbToHsl,
+  rgbToHsv,
+  rgbToLab,
   samplePixel,
   type RGB,
 } from './colors'
@@ -185,5 +193,133 @@ describe('samplePixel', () => {
 
   it.each([0, 15, 17, 20])('rejects mismatched RGBA buffer length %s', (length) => {
     expect(samplePixel(new Uint8ClampedArray(length), 2, 2, 0, 0)).toBeNull()
+  })
+})
+
+describe('HSV conversions', () => {
+  it('converts primaries and steel blue', () => {
+    expect(rgbToHsv({ r: 255, g: 0, b: 0 })).toEqual({ h: 0, s: 100, v: 100 })
+    expect(rgbToHsv({ r: 0, g: 255, b: 0 })).toEqual({ h: 120, s: 100, v: 100 })
+    expect(rgbToHsv({ r: 0, g: 0, b: 255 })).toEqual({ h: 240, s: 100, v: 100 })
+    expect(rgbToHsv({ r: 18, g: 52, b: 86 })).toEqual({ h: 210, s: 79, v: 34 })
+    expect(rgbToHsv({ r: 128, g: 128, b: 128 })).toEqual({ h: 0, s: 0, v: 50 })
+  })
+
+  it('clamps channels and keeps non-finite input in range', () => {
+    expect(rgbToHsv({ r: -5, g: 300, b: NaN })).toEqual({ h: 120, s: 100, v: 100 })
+    expect(hsvToRgb({ h: NaN, s: 200, v: -50 })).toEqual({ r: 0, g: 0, b: 0 })
+  })
+
+  it('wraps hue and reproduces primaries', () => {
+    expect(hsvToRgb({ h: 0, s: 100, v: 100 })).toEqual({ r: 255, g: 0, b: 0 })
+    expect(hsvToRgb({ h: 360, s: 100, v: 100 })).toEqual({ r: 255, g: 0, b: 0 })
+    expect(hsvToRgb({ h: -10, s: 100, v: 100 })).toEqual({ r: 255, g: 0, b: 43 })
+  })
+
+  it('round-trips arbitrary RGB through HSV within one channel step', () => {
+    for (const rgb of [{ r: 18, g: 52, b: 86 }, { r: 255, g: 128, b: 0 }, { r: 7, g: 9, b: 11 }]) {
+      const round = hsvToRgb(rgbToHsv(rgb))
+      expect(Math.abs(round.r - rgb.r)).toBeLessThanOrEqual(1)
+      expect(Math.abs(round.g - rgb.g)).toBeLessThanOrEqual(1)
+      expect(Math.abs(round.b - rgb.b)).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('converts HSL back to an equivalent RGB', () => {
+    const round = hslToRgb({ h: 210, s: 65, l: 20 })
+    expect(Math.abs(round.r - 18)).toBeLessThanOrEqual(2)
+    expect(Math.abs(round.g - 52)).toBeLessThanOrEqual(2)
+    expect(Math.abs(round.b - 86)).toBeLessThanOrEqual(2)
+  })
+})
+
+describe('CMYK and LAB conversions', () => {
+  it('converts primaries and neutral colors to CMYK', () => {
+    expect(rgbToCmyk({ r: 255, g: 0, b: 0 })).toEqual({ c: 0, m: 100, y: 100, k: 0 })
+    expect(rgbToCmyk({ r: 255, g: 255, b: 255 })).toEqual({ c: 0, m: 0, y: 0, k: 0 })
+    expect(rgbToCmyk({ r: 0, g: 0, b: 0 })).toEqual({ c: 0, m: 0, y: 0, k: 100 })
+    expect(cmykToRgb({ c: 0, m: 100, y: 100, k: 0 })).toEqual({ r: 255, g: 0, b: 0 })
+  })
+
+  it('round-trips CMYK within a small tolerance', () => {
+    const round = cmykToRgb(rgbToCmyk({ r: 18, g: 52, b: 86 }))
+    expect(Math.abs(round.r - 18)).toBeLessThanOrEqual(2)
+    expect(Math.abs(round.g - 52)).toBeLessThanOrEqual(2)
+    expect(Math.abs(round.b - 86)).toBeLessThanOrEqual(2)
+  })
+
+  it('matches the D65 LAB reference points', () => {
+    expect(rgbToLab({ r: 255, g: 255, b: 255 })).toEqual({ l: 100, a: 0, b: 0 })
+    expect(rgbToLab({ r: 0, g: 0, b: 0 })).toEqual({ l: 0, a: 0, b: 0 })
+    expect(rgbToLab({ r: 255, g: 0, b: 0 })).toEqual({ l: 53, a: 80, b: 67 })
+    expect(labToRgb({ l: 100, a: 0, b: 0 })).toEqual({ r: 255, g: 255, b: 255 })
+  })
+
+  it('round-trips LAB within a small tolerance', () => {
+    const round = labToRgb(rgbToLab({ r: 70, g: 130, b: 180 }))
+    expect(Math.abs(round.r - 70)).toBeLessThanOrEqual(2)
+    expect(Math.abs(round.g - 130)).toBeLessThanOrEqual(2)
+    expect(Math.abs(round.b - 180)).toBeLessThanOrEqual(2)
+  })
+})
+
+describe('extended formatColor', () => {
+  const steel = { r: 70, g: 130, b: 180 }
+  it('keeps HEX, RGB and HSL output unchanged', () => {
+    expect(formatColor(steel, 'hex')).toBe('#4682B4')
+    expect(formatColor(steel, 'rgb')).toBe('rgb(70, 130, 180)')
+    expect(formatColor(steel, 'hsl')).toBe('hsl(207, 44%, 49%)')
+  })
+
+  it('formats alpha-aware and additional notations', () => {
+    expect(formatColor(steel, 'hexa', 0.5)).toBe('#4682B480')
+    expect(formatColor(steel, 'rgba', 0.5)).toBe('rgba(70, 130, 180, 0.5)')
+    expect(formatColor(steel, 'hsla', 0.5)).toBe('hsla(207, 44%, 49%, 0.5)')
+    expect(formatColor(steel, 'hsv')).toBe('hsv(207, 61%, 71%)')
+    expect(formatColor(steel, 'cmyk')).toBe('cmyk(61%, 28%, 0%, 29%)')
+    expect(formatColor({ r: 255, g: 0, b: 0 }, 'lab')).toBe('lab(53, 80, 67)')
+  })
+
+  it('clamps alpha into the unit interval', () => {
+    expect(formatColor(steel, 'hexa', 2)).toBe('#4682B4FF')
+    expect(formatColor(steel, 'rgba', -1)).toBe('rgba(70, 130, 180, 0)')
+  })
+})
+
+describe('parseColor', () => {
+  it('parses hex notations and ignores alpha', () => {
+    expect(parseColor('#abc')).toEqual({ r: 170, g: 187, b: 204 })
+    expect(parseColor('f005')).toEqual({ r: 255, g: 0, b: 0 })
+    expect(parseColor('#4682B4')).toEqual({ r: 70, g: 130, b: 180 })
+    expect(parseColor('#12345680')).toEqual({ r: 18, g: 52, b: 86 })
+  })
+
+  it.each([
+    ['rgb(18, 52, 86)', { r: 18, g: 52, b: 86 }],
+    ['rgba(18, 52, 86, 0.5)', { r: 18, g: 52, b: 86 }],
+    ['rgb(10%, 20%, 30%)', { r: 26, g: 51, b: 77 }],
+    ['hsv(0, 100%, 100%)', { r: 255, g: 0, b: 0 }],
+    ['hsva(240deg, 100%, 100%, 0.3)', { r: 0, g: 0, b: 255 }],
+    ['cmyk(0, 100%, 100%, 0)', { r: 255, g: 0, b: 0 }],
+    ['lab(100, 0, 0)', { r: 255, g: 255, b: 255 }],
+  ])('parses %s', (input, expected) => {
+    expect(parseColor(input)).toEqual(expected)
+  })
+
+  it('handles hsl with deg and percent units', () => {
+    const parsed = parseColor('hsl(210deg, 65%, 20%)')
+    expect(parsed).not.toBeNull()
+    expect(Math.abs(parsed!.r - 18)).toBeLessThanOrEqual(2)
+    expect(Math.abs(parsed!.g - 52)).toBeLessThanOrEqual(2)
+    expect(Math.abs(parsed!.b - 86)).toBeLessThanOrEqual(2)
+  })
+
+  it('clamps out-of-range channels', () => {
+    expect(parseColor('rgb(-20, 300, 12)')).toEqual({ r: 0, g: 255, b: 12 })
+    expect(parseColor('hsl(-90, 200%, -10%)')).toEqual({ r: 0, g: 0, b: 0 })
+  })
+
+  it.each(['', ' ', '#12345', '#ggg', '0x123456', 'rgb(1, 2)', 'rgb(a, b, c)', 'rgb((1, 2, 3))', 'rgb(1, 2, 3, 4, 5)', 'lab(1, 2)', 'cmyk(1, 2, 3)', 'notacolor'])('rejects %j', (input) => {
+    expect(parseColor(input)).toBeNull()
   })
 })

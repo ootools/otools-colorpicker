@@ -15,7 +15,7 @@ const entries = [
   { name: 'plugin.json', data: Buffer.from(JSON.stringify(manifest, null, 2) + '\n') },
   { name: 'logo.svg', data: readFileSync(join(root, 'logo.svg')) },
   { name: 'THIRD_PARTY_NOTICES.md', data: readFileSync(join(root, 'THIRD_PARTY_NOTICES.md')) },
-  { name: 'licenses/otools-plugin-sdk.txt', data: readFileSync(join(root, 'vendor/otools-plugin-sdk/LICENSE')) },
+  { name: 'licenses/otools-plugin-sdk.txt', data: readFileSync(join(root, 'node_modules/otools-plugin-sdk/LICENSE')) },
 ];
 for (const [name, file] of [
   ['vue.txt', 'vue/LICENSE'],
@@ -74,5 +74,21 @@ const outputDir = join(root, 'dist-pack');
 mkdirSync(outputDir, { recursive: true });
 const filename = `${manifest.packid}-${manifest.version}.oplg`;
 writeFileSync(join(outputDir, filename), archive);
-writeFileSync(join(outputDir, 'SHA256SUMS'), `${createHash('sha256').update(archive).digest('hex')}  ${filename}\n`);
+// 发布目录采用与姐妹仓一致的扁平结构：oplg + 生产清单 + logo + 摘要 + 元信息。
+writeFileSync(join(outputDir, 'plugin.json'), entries[0].data);
+writeFileSync(join(outputDir, 'logo.svg'), readFileSync(join(root, 'logo.svg')));
+const releaseFiles = [filename, 'plugin.json', 'logo.svg'];
+writeFileSync(join(outputDir, 'SHA256SUMS'), `${releaseFiles
+  .map(name => `${createHash('sha256').update(readFileSync(join(outputDir, name))).digest('hex')}  ${name}`)
+  .join('\n')}\n`);
+const meta = {
+  packid: manifest.packid,
+  uuid: manifest.uuid,
+  version: manifest.version,
+  output: filename,
+  entries: entries.length,
+  totalBytes: entries.reduce((sum, item) => sum + item.data.length, 0),
+  nativeLibs: [],
+};
+writeFileSync(join(outputDir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`);
 console.log(`Created ${filename} (${entries.length} files, ${archive.length} bytes)`);

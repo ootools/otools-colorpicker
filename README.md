@@ -4,13 +4,15 @@
 
 ## 功能
 
-- 静默直达 Panel 插件：点击插件图标，宿主在隐藏状态加载页面并立即进入原生全屏取色。
+- 静默直达 Panel 插件：点击插件图标，或点击宿主托盘「插件动作 → 屏幕取色」，宿主在隐藏状态加载页面并立即进入原生全屏取色。托盘入口由 `plugin.json` 的 `trayActions` 声明（id `pick`，关键词 `launch`），与图标点击走同一条 `source: "direct"` 链路。
 - 原生覆盖层负责定位、放大和确认/取消。插件不显示截图画布、放大镜、选区工具或自定义浮窗。
 - “冻结画面取色”开关默认关闭，使用实时取色；开启后在冻结画面上取色。原生面板和浏览器预览均显示开关与提示，取色期间不可更改，设置保存在本地并用于下次启动。
 - 确认后自动复制颜色，默认 HEX；在面板中选择 RGB/HSL 后会记住自动复制格式。
 - 成功、取消和失败后均不自动显示 Panel；通过宿主的 Option 操作手动打开面板，查看色卡、复制格式、最近颜色或错误。手动展开本身不会再次取色，结束回调也不会再次隐藏用户已主动打开的面板。
 - 面板的“再次取色”按钮显式启动同一原生流程；权限按钮显式申请屏幕录制权限。
-- 最近24色去重保存在本地，无截图上传或图片持久化。
+- 最近24色去重保存在本地，色块附带 HEX 文案；可点击星标收藏常用颜色，收藏独立持久化。无截图上传或图片持久化。
+- 主面板色板：饱和度/明度方阵与色相滑条支持鼠标/触摸拖拽和方向键操作，并内置 24 个预设色块；拖拽过程不刷历史，一次手势只记一条。
+- 颜色格式实时转换：HEX / RGB / HSL / HEXA / RGBA / HSLA / HSV / CMYK / LAB 并列展示，每行可独立复制；可编辑输入框实时解析 HEX、RGB(A)、HSL(A)、HSV(A)、CMYK、LAB 色值（含百分比与 alpha，alpha 不参与屏幕取色），无效输入给出行内提示。
 - 八种语言。浏览器仅提供明确标注的演示色块和浏览器剪贴板复制，不提供屏幕取色。
 
 ## 取色协议
@@ -36,7 +38,7 @@ pnpm run pack
 
 预览：http://127.0.0.1:5994/ 。没有桌面桥接时屏幕取色禁用，演示色块可检查格式、历史和浏览器剪贴板；页面会明确标注此限制。
 
-SDK 固定快照在 `vendor/otools-plugin-sdk`，依赖为 `file:vendor/otools-plugin-sdk`。安装和构建不需要核心仓库，也不引用核心源码路径。更新 SDK 时须同时更新快照和 `vendor/sdk-source.json`。
+SDK 依赖为 npm 发布的 `otools-plugin-sdk@^0.3.0`（版本锁定在 `pnpm-lock.yaml`），安装和构建不需要核心仓库，也不引用核心源码路径。SDK 0.3+ 不再导出 `capture-factory` 运行时模块，因此错误类型由插件本地定义（`src/captureSession.ts`），能力/权限类型从 `otools-plugin-sdk/capture` 导入。
 
 ## 加载
 
@@ -44,7 +46,7 @@ SDK 固定快照在 `vendor/otools-plugin-sdk`，依赖为 `file:vendor/otools-p
 
 离线安装：先 `pnpm build && pnpm run pack`，在插件市场的本地安装入口选择 `dist-pack/otools-colorpicker-0.1.0.oplg`。包采用与 puter 系列一致的扁平 ZIP 格式，生产清单移除 devUrl。
 
-必须升级到支持 `freezeScreen` 实时/冻结选择协议的新 OTools 宿主及 SDK；仅更新插件不能让旧宿主获得实时取色能力。宿主还需支持直达 Panel、原生 color 模式、`restoreHost: false`、`hide_panel_window` 和 `otools_copy_text` 路由。清单声明 `openMode: "panel"`、`directLaunch: true`、`screenCapture: true`，不声明面板宽高，沿用宿主默认 Panel 布局及用户的全局尺寸偏好。
+必须升级到支持 `freezeScreen` 实时/冻结选择协议的新 OTools 宿主及 SDK；仅更新插件不能让旧宿主获得实时取色能力。宿主还需支持直达 Panel、原生 color 模式、`restoreHost: false`、`hide_panel_window` 和 `otools_copy_text` 路由；托盘「插件动作」需要 OTools ≥ 0.9.10（该版本起支持清单 `trayActions` 与直达关键词透传），低版本宿主不会渲染该菜单项但不影响图标直达。清单声明 `openMode: "panel"`、`directLaunch: true`、`screenCapture: true` 与 `trayActions`，不声明面板宽高，沿用宿主默认 Panel 布局及用户的全局尺寸偏好。
 
 ## 权限与平台
 
@@ -57,4 +59,4 @@ SDK 固定快照在 `vendor/otools-plugin-sdk`，依赖为 `file:vendor/otools-p
 
 自动测试覆盖颜色计算与历史、1×1 读取/解码/复制/释放顺序、取消和迟到结果、冷启动和重复事件、权限与复制确认。真实权限、多显示器、原生覆盖层及隐藏 Panel 的直达启动仍需在对应桌面宿主验收。
 
-本仓库目前为本地独立 Git 仓库，未创建远程仓库或发布到插件市场。
+本仓库已有远程仓库 `ootools/otools-colorpicker`（`main` 已同步），但尚未打 tag、未创建 GitHub Release，也未上架插件市场。本次仅升级面板功能，不涉及发布。

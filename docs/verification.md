@@ -1,5 +1,12 @@
 # Panel 直达版本验证
 
+## 2026-11-26 主面板功能升级
+
+- 全量 204 项 Vitest 通过（colors 126 / captureSession 26 / App 52），`vue-tsc` 与 Vite production build 通过，修复 `pack.mjs` 的 SDK license 路径后 `pnpm run pack` 生成 11 文件、48810 字节的 `.oplg`。
+- 新增覆盖：HSV/CMYK/LAB 转换与舍入、多格式解析及拒绝表、扩展格式输出；预设色选择、输入框实时解析与单次历史提交、无效输入提示、SV 拖拽与键盘操作（一次手势只记一条历史）、收藏跨挂载持久化、转换结果经宿主剪贴板复制。
+- 兼容修复：安装依赖刷新到 npm SDK 0.3.0 后，`otools-plugin-sdk/capture-factory` 运行时子路径已不存在；错误类改为插件本地实现，类型从 `otools-plugin-sdk/capture` 导入，测试相应调整。原生取色协议与既有断言（精确色值、唯一 alert/status、无窗口 API）保持不变。
+- 未做真实宿主原生全屏取色验收；浏览器预览不替代该部分。
+
 2026-11-10，冻结画面偏好更新：插件全量 163 项测试、vue-tsc 与 Vite production build 均通过。先执行新增测试确认缺少开关、参数及实时模式提示的失败，再实现功能。新增覆盖默认 `freezeScreen: false`、仅字面值 `"true"` 启用、切换后跨挂载恢复、冻结参数、忙碌期间禁止切换、选项快照、八种语言提示、两种模式取消不复制及宿主默认 Panel 尺寸。保留现有权限申请/重检、直达不重复隐藏及结束不自动显示行为。
 
 实时取色需支持 `freezeScreen` 的新宿主及 SDK，原生实时实现要求 macOS 14+ / ScreenCaptureKit。实时不可用时引导用户手动开启冻结，不自动切换模式。此次插件验证未执行真实桌面实时/冻结取色验收。

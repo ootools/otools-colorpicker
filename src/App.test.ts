@@ -206,6 +206,12 @@ it('keeps the default host Panel size without custom dimensions', () => {
   expect(manifest).not.toHaveProperty('customWindow');
 });
 
+it('registers a tray action that reuses the direct launch keyword', () => {
+  expect(manifest.trayActions).toEqual([
+    { id: 'pick', title: 'Pick Color', titleCN: '屏幕取色', keyword: 'launch' },
+  ]);
+});
+
 it('does not pick on ordinary desktop mount or manual panel reveal', async () => {
   bridge.native = true;
   await mount(); await ready();
@@ -432,4 +438,92 @@ it('reports browser clipboard rejection', async () => {
   host.querySelector<HTMLButtonElement>('[data-testid="copy-hex"]')!.click();
   await vi.waitFor(() => expect(host.querySelector('[role="alert"]')?.textContent).toContain('Copy failed'));
   expect(host.querySelector('[role="status"]')?.textContent).not.toContain('Copied');
+});
+
+function conversionValue(format: string) {
+  return host.querySelector(`[data-testid="convert-${format}"] code`)?.textContent;
+}
+
+it('selects a preset swatch and shows live multi-format conversions', async () => {
+  await mount();
+  host.querySelector<HTMLButtonElement>('[data-testid="preset-color"][aria-label="#FF0000"]')!.click();
+  await nextTick();
+  expect(conversionValue('hex')).toBe('#FF0000');
+  expect(conversionValue('rgb')).toBe('rgb(255, 0, 0)');
+  expect(conversionValue('hsv')).toBe('hsv(0, 100%, 100%)');
+  expect(conversionValue('cmyk')).toBe('cmyk(0%, 100%, 100%, 0%)');
+  expect(conversionValue('lab')).toBe('lab(53, 80, 67)');
+  expect(JSON.parse(localStorage.getItem('otools-colorpicker:history:v1')!)).toEqual(['#FF0000']);
+});
+
+it('parses typed colors live and commits a single history entry', async () => {
+  await mount();
+  const input = host.querySelector<HTMLInputElement>('[data-testid="color-input"]')!;
+  input.value = 'rgba(18, 52, 86, 0.5)';
+  input.dispatchEvent(new Event('input', { bubbles: true })); await nextTick();
+  expect(conversionValue('hex')).toBe('#123456');
+  expect(conversionValue('rgba')).toBe('rgba(18, 52, 86, 1)');
+  expect(localStorage.getItem('otools-colorpicker:history:v1')).toBeNull();
+  input.dispatchEvent(new Event('change', { bubbles: true })); await nextTick();
+  expect(JSON.parse(localStorage.getItem('otools-colorpicker:history:v1')!)).toEqual(['#123456']);
+  expect(input.value).toBe('#123456');
+});
+
+it('shows an inline hint for invalid input without adding an alert', async () => {
+  await mount();
+  const input = host.querySelector<HTMLInputElement>('[data-testid="color-input"]')!;
+  input.value = 'not-a-color';
+  input.dispatchEvent(new Event('input', { bubbles: true })); await nextTick();
+  expect(host.textContent).toContain('Unrecognized color value');
+  expect(host.querySelectorAll('[role="alert"]')).toHaveLength(0);
+  expect(conversionValue('hex')).toBe('—');
+});
+
+it('drags the SV field and records one history entry per gesture', async () => {
+  await mount();
+  const field = host.querySelector<HTMLElement>('[data-testid="sv-picker"]')!;
+  vi.spyOn(field, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100, x: 0, y: 0, toJSON: () => ({}) } as DOMRect);
+  field.dispatchEvent(new MouseEvent('pointerdown', { clientX: 100, clientY: 0, bubbles: true }) as unknown as PointerEvent);
+  field.dispatchEvent(new MouseEvent('pointermove', { clientX: 50, clientY: 50, bubbles: true }) as unknown as PointerEvent);
+  await nextTick();
+  const dragged = conversionValue('hex');
+  expect(dragged).not.toBe('—');
+  expect(localStorage.getItem('otools-colorpicker:history:v1')).toBeNull();
+  field.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }) as unknown as PointerEvent);
+  await nextTick();
+  expect(JSON.parse(localStorage.getItem('otools-colorpicker:history:v1')!)).toEqual([dragged]);
+});
+
+it('adjusts the SV field with the keyboard', async () => {
+  await mount();
+  host.querySelector<HTMLButtonElement>('[data-testid="preset-color"][aria-label="#FF0000"]')!.click();
+  await nextTick();
+  const field = host.querySelector<HTMLElement>('[data-testid="sv-picker"]')!;
+  field.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+  await nextTick();
+  expect(field.getAttribute('aria-valuenow')).toBe('99');
+  expect(conversionValue('hex')).toBe('#FF0303');
+  expect(JSON.parse(localStorage.getItem('otools-colorpicker:history:v1')!)).toEqual(['#FF0303', '#FF0000']);
+});
+
+it('favorites a color, persists it across remount, and can remove it', async () => {
+  await mount();
+  host.querySelector<HTMLButtonElement>('[data-testid="preset-color"][aria-label="#FF0000"]')!.click(); await nextTick();
+  host.querySelector<HTMLButtonElement>('[data-testid="favorite"]')!.click(); await nextTick();
+  expect(host.querySelectorAll('[data-testid="favorite-color"]')).toHaveLength(1);
+  expect(JSON.parse(localStorage.getItem('otools-colorpicker:favorites:v1')!)).toEqual(['#FF0000']);
+  app!.unmount(); app = undefined;
+  await mount();
+  expect(host.querySelectorAll('[data-testid="favorite-color"]')).toHaveLength(1);
+  host.querySelector<HTMLButtonElement>('.remove-favorite')!.click(); await nextTick();
+  expect(host.querySelectorAll('[data-testid="favorite-color"]')).toHaveLength(0);
+});
+
+it('copies a converted format through the host clipboard', async () => {
+  bridge.native = true;
+  await mount(); await ready();
+  host.querySelector<HTMLButtonElement>('[data-testid="pick"]')!.click();
+  await vi.waitFor(() => expect(conversionValue('hex')).toBe('#123456'));
+  host.querySelector<HTMLButtonElement>('[data-testid="convert-copy-cmyk"]')!.click();
+  await vi.waitFor(() => expect(bridge.invoke).toHaveBeenCalledWith('otools_copy_text', { text: expect.stringContaining('cmyk(') }));
 });

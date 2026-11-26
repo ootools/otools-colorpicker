@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CaptureError, type CaptureCompletedResult, type CaptureResult } from 'otools-plugin-sdk/capture-factory';
-import { createCaptureSession, decodeColorPng, type ColorCaptureTransport } from './captureSession';
+import type { CaptureCompletedResult, CaptureResult } from 'otools-plugin-sdk/capture';
+import { CaptureError, createCaptureSession, decodeColorPng, type ColorCaptureTransport } from './captureSession';
 import type { RGB } from './colors';
 
 function deferred<T>() {
