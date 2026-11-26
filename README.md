@@ -44,7 +44,7 @@ SDK 依赖为 npm 发布的 `otools-plugin-sdk@^0.3.0`（版本锁定在 `pnpm-l
 
 开发：在 OTools 开发管理中创建插件记录，绑定本仓库根目录，配置清单中的 devUrl 并启用调试。不要软链到核心 plugins 目录。
 
-离线安装：先 `pnpm build && pnpm run pack`，在插件市场的本地安装入口选择 `dist-pack/otools-colorpicker-0.1.0.oplg`。包采用与 puter 系列一致的扁平 ZIP 格式，生产清单移除 devUrl。
+离线安装：先 `pnpm build && pnpm run pack`，在插件市场的本地安装入口选择 `dist-pack/otools-colorpicker-0.1.1.oplg`。包采用与 puter 系列一致的扁平 ZIP 格式，生产清单移除 devUrl。
 
 必须升级到支持 `freezeScreen` 实时/冻结选择协议的新 OTools 宿主及 SDK；仅更新插件不能让旧宿主获得实时取色能力。宿主还需支持直达 Panel、原生 color 模式、`restoreHost: false`、`hide_panel_window` 和 `otools_copy_text` 路由；托盘「插件动作」需要 OTools ≥ 0.9.10（该版本起支持清单 `trayActions` 与直达关键词透传），低版本宿主不会渲染该菜单项但不影响图标直达。清单声明 `openMode: "panel"`、`directLaunch: true`、`screenCapture: true` 与 `trayActions`，不声明面板宽高，沿用宿主默认 Panel 布局及用户的全局尺寸偏好。
 
@@ -59,4 +59,9 @@ SDK 依赖为 npm 发布的 `otools-plugin-sdk@^0.3.0`（版本锁定在 `pnpm-l
 
 自动测试覆盖颜色计算与历史、1×1 读取/解码/复制/释放顺序、取消和迟到结果、冷启动和重复事件、权限与复制确认。真实权限、多显示器、原生覆盖层及隐藏 Panel 的直达启动仍需在对应桌面宿主验收。
 
-本仓库已发布 **v0.1.0**：GitHub Release 标签 `v0.1.0`（含 `otools-colorpicker-0.1.0.oplg`、`plugin.json`、`logo.svg`、`SHA256SUMS`），并已上架 OTools 插件市场（单合包 `packageMode=0`）。推 `v<版本>` 标签会自动构建、发 Release 并同步上架；`release` environment 已配置 `XYCLOUD_PAT` 与 `OTOOLS_PUBLISH_MARKET=true`。
+本仓库已发布 **v0.1.1**：GitHub Release 标签 `v0.1.1`（含 `otools-colorpicker-0.1.1.oplg`、`plugin.json`、`logo.svg`、`SHA256SUMS`），并已上架 OTools 插件市场（单合包 `packageMode=0`）。推 `v<版本>` 标签会自动构建、发 Release 并同步上架；`release` environment 已配置 `XYCLOUD_PAT` 与 `OTOOLS_PUBLISH_MARKET=true`。
+
+### 版本记录
+
+- **v0.1.1**：重设计面板布局——按宿主默认 800×600 Panel 改为左右双栏（左主视觉色卡＋取色/冻结操作，右 SV 方阵×色相条＋输入），色值/预设/最近/收藏合并为四标签页（色值页 9 种格式 3 列），新增空态与权限提示；保留全部原生取色、键盘/拖拽、剪贴板与 8 语言能力。
+- **v0.1.0**：首个版本，原生全屏取色并自动复制，支持冻结画面、9 种格式转换、最近 24 色与收藏。

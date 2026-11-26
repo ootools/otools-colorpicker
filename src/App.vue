@@ -41,6 +41,14 @@ const inputInvalid = ref(false);
 const favorites = ref<string[]>([]);
 const favoritesKey = 'otools-colorpicker:favorites:v1';
 const dragging = ref<'sv' | 'hue' | null>(null);
+const tabs = [
+  { key: 'values', label: 'tabValues' },
+  { key: 'presets', label: 'tabPresets' },
+  { key: 'recent', label: 'tabRecent' },
+  { key: 'favorites', label: 'tabFavorites' },
+] as const;
+type TabKey = typeof tabs[number]['key'];
+const activeTab = ref<TabKey>('values');
 let disposed = false;
 let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 let stopLaunch: (() => void) | undefined;
@@ -55,6 +63,12 @@ const conversions = computed(() => allFormats.map(key => ({
   key,
   value: selected.value ? formatColor(selected.value, key) : '—',
 })));
+const conversionRows = computed(() => {
+  const rows: (typeof conversions.value)[] = [];
+  for (let index = 0; index < conversions.value.length; index += 3) rows.push(conversions.value.slice(index, index + 3));
+  return rows;
+});
+const heroColor = computed(() => selected.value ? hex.value : 'linear-gradient(135deg, #8B5CF6, #6D28D9)');
 const isFavorite = computed(() => selected.value ? favorites.value.includes(rgbToHex(selected.value)) : false);
 
 function loadPreferences() {
@@ -301,72 +315,265 @@ onUnmounted(() => { disposed = true; session.dispose(); stopLaunch?.(); clearTim
 
 <template>
   <main class="picker" :dir="direction">
-    <header class="header"><span class="eyebrow">OTools</span><h1>{{ t('title') }}</h1></header>
+    <header class="topbar">
+      <span class="brand" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="7" stroke="#fff" stroke-width="2"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+      </span>
+      <h1>{{ t('title') }}</h1>
+      <span class="topbar-spacer"></span>
+      <span v-if="!native" class="badge preview-badge">{{ t('demoBadge') }}</span>
+      <span v-else-if="permission && !permission.granted" class="badge warn-badge">{{ t('pendingAuth') }}</span>
+      <template v-else>
+        <span class="ready-dot" aria-hidden="true"></span>
+        <span class="ready-text">{{ t('ready') }}</span>
+      </template>
+      <span class="gear" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="#A6A2BD" stroke-width="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1" stroke="#A6A2BD" stroke-width="2" stroke-linecap="round"/></svg>
+      </span>
+    </header>
+
     <section v-if="error" class="error" role="alert">{{ error }}</section>
-    <section v-if="!native" class="intro">
-      <div class="demo-note"><strong>{{ t('previewOnly') }}</strong><span>{{ t('demoBadge') }}</span></div>
-      <p class="muted">{{ t('browserClipboard') }}</p>
-      <div class="demo-grid"><button v-for="color in demoColors" :key="color" data-testid="demo" class="demo-swatch" :style="{ background: color }" :aria-label="color" @click="selectColor(color)"></button></div>
-    </section>
-    <p v-else class="muted">{{ t('launchHint') }}</p>
-    <div class="freeze-preference">
-      <label for="freeze-screen"><input id="freeze-screen" data-testid="freeze-screen" type="checkbox" role="switch" :checked="freezeScreen" :aria-checked="freezeScreen" :disabled="busy" aria-describedby="freeze-screen-hint" @change="toggleFreezeScreen">{{ t('freezeScreen') }}</label>
-      <p id="freeze-screen-hint" class="muted">{{ t('freezeScreenHint') }}</p>
+
+    <div class="workspace">
+      <div class="col-left">
+        <section class="hero" :style="{ '--hero-color': heroColor }">
+          <div class="hero-top">
+            <span class="hero-label">{{ t('currentColor') }}</span>
+            <button data-testid="favorite" class="star-btn" :disabled="!selected" :aria-pressed="isFavorite" :aria-label="isFavorite ? t('removeFavorite') : t('addFavorite')" @click="toggleFavorite">{{ isFavorite ? '★' : '☆' }}</button>
+          </div>
+          <div class="hero-bottom">
+            <strong class="hero-hex">{{ displayText }}</strong>
+            <button data-testid="copy-hex" class="copy-hero" :disabled="!selected" @click="copy(hex, 'hex')">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2" stroke="#fff" stroke-width="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" stroke="#fff" stroke-width="2"/></svg>
+              <span>{{ copied === 'hex' ? t('copied') : t('copy') + ' HEX' }}</span>
+            </button>
+          </div>
+          <span class="hero-status" role="status">{{ copied ? t('copied') : '' }}</span>
+        </section>
+
+        <div class="actions">
+          <button data-testid="pick" class="primary" :disabled="busy || !canPick" @click="startCapture()">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="7" stroke="#1A1230" stroke-width="2"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="#1A1230" stroke-width="2" stroke-linecap="round"/></svg>
+            <span>{{ busy ? t('busy') : t('pick') }}</span>
+          </button>
+          <label for="freeze-screen" class="freeze-toggle">
+            <input id="freeze-screen" data-testid="freeze-screen" type="checkbox" role="switch" :checked="freezeScreen" :aria-checked="freezeScreen" :disabled="busy" aria-describedby="freeze-screen-hint" @change="toggleFreezeScreen">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2v20M4 6l16 12M20 6L4 18M12 2l-2 3M12 2l2 3M12 22l-2-3M12 22l2-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <span>{{ t('freezeScreen') }}</span>
+          </label>
+        </div>
+        <p id="freeze-screen-hint" class="sr-only">{{ t('freezeScreenHint') }}</p>
+        <p class="hint-line">{{ t('autoCopy') }}</p>
+
+        <div v-if="capabilities && (!capabilities.available || !capabilities.interactive)" class="notice">{{ t(freezeScreen ? 'unsupported' : 'liveUnavailable') }}</div>
+
+        <div v-if="permission && !permission.granted" class="permission-card">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3l9 16H3l9-16z" stroke="#FBBF24" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 9v5M12 17h.01" stroke="#FBBF24" stroke-width="2" stroke-linecap="round"/></svg>
+          <div class="permission-copy"><strong>{{ t('permission') }}</strong><span>{{ t('grantHint') }}</span></div>
+          <button v-if="permission.canRequest" data-testid="permission" class="grant-btn" @click="requestPermission">{{ t('grant') }}</button>
+        </div>
+
+        <section v-if="!native" class="intro">
+          <p class="sr-only">{{ t('previewOnly') }}</p>
+          <p class="muted">{{ t('browserClipboard') }}</p>
+          <div class="demo-grid">
+            <button v-for="color in demoColors" :key="color" data-testid="demo" class="demo-swatch" :style="{ background: color }" :aria-label="color" @click="selectColor(color)"></button>
+          </div>
+        </section>
+      </div>
+
+      <div class="col-right">
+        <div class="palette">
+          <div class="sv-field" data-testid="sv-picker" role="slider" tabindex="0" :style="{ '--hue': hueColor }"
+            :aria-label="t('saturationValue')" :aria-valuemin="0" :aria-valuemax="100"
+            :aria-valuenow="hsv.s" :aria-valuetext="`${hsv.s}% / ${hsv.v}%`"
+            @pointerdown="startDrag('sv', $event)" @pointermove="moveDrag('sv', $event)"
+            @pointerup="endDrag" @pointercancel="endDrag" @keydown="onSliderKey('sv', $event)">
+            <span class="sv-thumb" :style="{ left: `${hsv.s}%`, top: `${100 - hsv.v}%` }"></span>
+          </div>
+          <div class="palette-side">
+            <div class="hue-field" data-testid="hue-slider" role="slider" tabindex="0"
+              :aria-label="t('hue')" :aria-valuemin="0" :aria-valuemax="359" :aria-valuenow="hsv.h"
+              @pointerdown="startDrag('hue', $event)" @pointermove="moveDrag('hue', $event)"
+              @pointerup="endDrag" @pointercancel="endDrag" @keydown="onSliderKey('hue', $event)">
+              <span class="hue-thumb" :style="{ left: `${hsv.h / 360 * 100}%` }"></span>
+            </div>
+            <label class="input-label" for="color-input">{{ t('inputColor') }}</label>
+            <input id="color-input" data-testid="color-input" class="color-input" :value="inputText" :aria-label="t('inputColor')" :placeholder="t('enterColor')" :aria-invalid="inputInvalid" spellcheck="false" @input="onColorInput" @change="commitColorInput" @keydown.enter="commitColorInput">
+            <p v-if="inputInvalid" class="invalid-hint">{{ t('invalidColor') }}</p>
+            <p v-else class="format-hint">HEX / RGB / HSL<br>CMYK / LAB</p>
+          </div>
+        </div>
+      </div>
     </div>
-    <section class="actions"><button data-testid="pick" class="primary" :disabled="busy || !canPick" @click="startCapture()">{{ busy ? t('busy') : t('pick') }}</button></section>
-    <p class="muted">{{ t('autoCopy') }}</p>
-    <p v-if="capabilities && (!capabilities.available || !capabilities.interactive)" class="notice">{{ t(freezeScreen ? 'unsupported' : 'liveUnavailable') }}</p>
-    <p v-if="permission && !permission.granted" class="notice">{{ t('permissionDenied') }}</p>
-    <button v-if="permission && !permission.granted && permission.canRequest" data-testid="permission" class="permission" @click="requestPermission">{{ t('permission') }} · {{ t('grant') }}</button>
-    <section class="color-card" :style="{ '--color': selected ? hex : 'linear-gradient(135deg,#8b5cf6,#22d3ee)' }">
-      <div class="color-preview"></div><div class="color-values"><strong>{{ displayText }}</strong><span>{{ selected ? `${rgb} · ${hsl}` : t('sample') }}</span></div>
-      <div class="formats"><button v-for="format in formats" :key="format" :data-testid="`format-${format}`" :class="{ active: currentFormat === format }" :aria-pressed="currentFormat === format" @click="selectFormat(format)">{{ format.toUpperCase() }}</button><button data-testid="copy-hex" :disabled="!selected" @click="copy(displayText, currentFormat)">{{ copied === currentFormat ? t('copied') : t('copy') }}</button></div>
-      <div class="copy-row"><button data-testid="copy-rgb" :disabled="!selected" @click="copy(rgb, 'rgb')">{{ rgb }}</button><button data-testid="copy-hsl" :disabled="!selected" @click="copy(hsl, 'hsl')">{{ hsl }}</button></div>
-      <span class="status" role="status">{{ copied ? t('copied') : '' }}</span>
-    </section>
-    <section class="palette">
-      <h2>{{ t('palette') }}</h2>
-      <div class="sv-field" data-testid="sv-picker" role="slider" tabindex="0" :style="{ '--hue': hueColor }"
-        :aria-label="t('saturationValue')" :aria-valuemin="0" :aria-valuemax="100"
-        :aria-valuenow="hsv.s" :aria-valuetext="`${hsv.s}% / ${hsv.v}%`"
-        @pointerdown="startDrag('sv', $event)" @pointermove="moveDrag('sv', $event)"
-        @pointerup="endDrag" @pointercancel="endDrag" @keydown="onSliderKey('sv', $event)">
-        <span class="sv-thumb" :style="{ left: `${hsv.s}%`, top: `${100 - hsv.v}%` }"></span>
+
+    <section class="collection">
+      <div class="tabbar">
+        <button v-for="tab in tabs" :key="tab.key" class="tab" :class="{ active: activeTab === tab.key }" :aria-pressed="activeTab === tab.key" @click="activeTab = tab.key">{{ t(tab.label) }}</button>
+        <span class="tabbar-spacer"></span>
+        <span class="tabbar-hint">{{ t('viewAll') }}</span>
       </div>
-      <div class="hue-field" data-testid="hue-slider" role="slider" tabindex="0"
-        :aria-label="t('hue')" :aria-valuemin="0" :aria-valuemax="359" :aria-valuenow="hsv.h"
-        @pointerdown="startDrag('hue', $event)" @pointermove="moveDrag('hue', $event)"
-        @pointerup="endDrag" @pointercancel="endDrag" @keydown="onSliderKey('hue', $event)">
-        <span class="hue-thumb" :style="{ left: `${hsv.h / 360 * 100}%` }"></span>
+      <div class="tabbody">
+        <div v-show="activeTab === 'values'" class="values-panel">
+          <div class="quick-row">
+            <div class="format-switch">
+              <button v-for="format in formats" :key="format" :data-testid="`format-${format}`" :class="{ active: currentFormat === format }" :aria-pressed="currentFormat === format" @click="selectFormat(format)">{{ format.toUpperCase() }}</button>
+            </div>
+            <button data-testid="copy-rgb" class="quick-copy" :disabled="!selected" @click="copy(rgb, 'rgb')">RGB</button>
+            <button data-testid="copy-hsl" class="quick-copy" :disabled="!selected" @click="copy(hsl, 'hsl')">HSL</button>
+          </div>
+          <div class="conversion-grid">
+            <div v-for="(row, rowIndex) in conversionRows" :key="rowIndex" class="conversion-row">
+              <div v-for="item in row" :key="item.key" class="conversion-card" :data-testid="`convert-${item.key}`">
+                <span class="conversion-name">{{ item.key.toUpperCase() }}</span>
+                <code>{{ item.value }}</code>
+                <button :data-testid="`convert-copy-${item.key}`" :disabled="item.value === '—'" @click="copy(item.value, item.key)">{{ t('copy') }}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-show="activeTab === 'presets'" class="preset-panel">
+          <div class="preset-grid">
+            <button v-for="color in presetColors" :key="color" data-testid="preset-color" class="preset-swatch" :style="{ background: color }" :aria-label="color" @click="selectColor(color)"></button>
+          </div>
+        </div>
+
+        <div v-show="activeTab === 'recent'" class="list-panel">
+          <div class="panel-head"><h2>{{ t('recent') }}</h2><button class="text-button" @click="clearHistory">{{ t('clear') }}</button></div>
+          <div v-if="history.length" class="history-grid">
+            <button v-for="color in history" :key="color" data-testid="recent-color" class="history-item" :aria-label="color" @click="selectColor(color)"><span class="history-chip" :style="{ background: color }"></span><span class="history-hex">{{ color }}</span></button>
+          </div>
+          <p v-else class="empty">{{ t('empty') }}</p>
+        </div>
+
+        <div v-show="activeTab === 'favorites'" class="list-panel">
+          <div class="panel-head"><h2>{{ t('favorites') }}</h2></div>
+          <div v-if="favorites.length" class="history-grid">
+            <div v-for="color in favorites" :key="color" class="favorite-item">
+              <button data-testid="favorite-color" class="history-chip" :style="{ background: color }" :aria-label="color" @click="selectColor(color)"></button>
+              <button class="remove-favorite" :aria-label="t('removeFavorite')" @click="removeFavorite(color)">×</button>
+            </div>
+          </div>
+          <p v-else class="empty">{{ t('emptyFavorites') }}</p>
+        </div>
       </div>
-      <p class="muted">{{ t('presets') }}</p>
-      <div class="preset-grid"><button v-for="color in presetColors" :key="color" data-testid="preset-color" class="preset-swatch" :style="{ background: color }" :aria-label="color" @click="selectColor(color)"></button></div>
     </section>
-    <section class="converter">
-      <div class="section-head"><h2>{{ t('converter') }}</h2><button data-testid="favorite" class="text-button favorite-button" :disabled="!selected" :aria-pressed="isFavorite" :aria-label="isFavorite ? t('removeFavorite') : t('addFavorite')" @click="toggleFavorite">{{ isFavorite ? '★' : '☆' }}</button></div>
-      <input id="color-input" data-testid="color-input" class="color-input" :value="inputText" :aria-label="t('enterColor')" :placeholder="t('enterColor')" :aria-invalid="inputInvalid" spellcheck="false" @input="onColorInput" @change="commitColorInput" @keydown.enter="commitColorInput">
-      <p v-if="inputInvalid" class="invalid-hint">{{ t('invalidColor') }}</p>
-      <div class="conversion-list"><div v-for="row in conversions" :key="row.key" class="conversion-row" :data-testid="`convert-${row.key}`"><span class="conversion-name">{{ row.key.toUpperCase() }}</span><code>{{ row.value }}</code><button :data-testid="`convert-copy-${row.key}`" :disabled="row.value === '—'" @click="copy(row.value, row.key)">{{ t('copy') }}</button></div></div>
-    </section>
-    <section class="recent"><div class="section-head"><h2>{{ t('recent') }}</h2><button class="text-button" @click="clearHistory">{{ t('clear') }}</button></div><div v-if="history.length" class="history-grid"><button v-for="color in history" :key="color" data-testid="recent-color" class="history-item" :aria-label="color" @click="selectColor(color)"><span class="history-chip" :style="{ background: color }"></span><span class="history-hex">{{ color }}</span></button></div><p v-else class="muted">{{ t('empty') }}</p></section>
-    <section class="favorites"><h2>{{ t('favorites') }}</h2><div v-if="favorites.length" class="history-grid"><div v-for="color in favorites" :key="color" class="favorite-item"><button data-testid="favorite-color" class="history-chip" :style="{ background: color }" :aria-label="color" @click="selectColor(color)"></button><button class="remove-favorite" :aria-label="t('removeFavorite')" @click="removeFavorite(color)">×</button></div></div><p v-else class="muted">{{ t('emptyFavorites') }}</p></section>
+
+    <footer class="footer">
+      <span class="footer-left"><i class="dot" aria-hidden="true"></i>{{ t('footerStatus') }}</span>
+      <span class="footer-right">{{ t('shortcut') }}</span>
+    </footer>
   </main>
 </template>
 
 <style>
-html,body,#app{margin:0;width:100%;min-height:100%;background:#171821}*{box-sizing:border-box}
+html, body, #app { margin: 0; width: 100%; height: 100%; background: #14121F; }
+* { box-sizing: border-box; }
 </style>
 <style scoped>
-button:disabled,input:disabled{cursor:default;opacity:.4}button:focus-visible,input:focus-visible{outline:2px solid #c4b5fd;outline-offset:2px}
-.freeze-preference{margin-top:12px}.freeze-preference label{display:flex;align-items:center;gap:8px;cursor:pointer}.freeze-preference input{margin:0;accent-color:#a78bfa}.freeze-preference .muted{margin:4px 0 0}
-.picker{min-height:100vh;padding:18px;background:#171821;color:#f8f7ff;font:13px/1.45 Inter,system-ui,sans-serif}.eyebrow{font-size:10px;letter-spacing:.16em;color:#a78bfa;text-transform:uppercase}h1{font-size:20px;margin:2px 0 0}.intro{margin-top:14px}.demo-note{display:flex;justify-content:space-between;align-items:center;gap:10px;color:#d9d7e8}.demo-note span{font-size:10px;color:#a78bfa;border:1px solid #514b77;border-radius:10px;padding:2px 7px}.demo-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;margin-top:10px}.demo-swatch{height:30px;border:2px solid #ffffff18;border-radius:7px;cursor:pointer}.actions{display:flex;gap:8px;margin:14px 0 8px}.actions button,.permission{flex:1;border:0;border-radius:8px;padding:9px;cursor:pointer;font-weight:600}.primary{background:#a78bfa;color:#17122a}.permission{background:#292a38;color:#eee;width:100%;margin:6px 0}.notice,.error{border-radius:8px;padding:8px;background:#32243a;color:#f5c7fa;font-size:12px}.section-head{display:flex;justify-content:space-between;align-items:center;color:#d9d7e8;font-size:11px}.text-button{border:0;background:transparent;color:#b7a9fb;font-size:11px;cursor:pointer}.color-card{margin-top:13px;padding:10px;border:1px solid #3d3d50;border-radius:10px;background:#222330}.color-preview{height:48px;border-radius:7px;background:var(--color);border:1px solid #fff3}.color-values{display:flex;flex-wrap:wrap;align-items:baseline;margin-top:8px;gap:8px}.color-values strong{font-size:18px;letter-spacing:.03em;overflow-wrap:anywhere}.color-values span{font-size:10px;color:#aaa8ba}.formats,.copy-row{display:flex;gap:5px;margin-top:8px}.formats button,.copy-row button{border:1px solid #404052;border-radius:6px;padding:6px 8px;background:#292a38;color:#dbd9e8;font-size:11px;cursor:pointer}.formats button.active{border-color:#a78bfa;color:#cfc4ff}.copy-row button{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.status{display:block;min-height:14px;color:#a7f3d0;font-size:11px;margin-top:5px}.recent{margin-top:14px}.recent h2{font-size:12px;margin:0}.history-grid{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px}.history-swatch{width:25px;height:25px;border:2px solid #fff2;border-radius:6px;cursor:pointer}.muted{color:#aaa8ba;font-size:12px;margin:8px 0}.error{margin-top:8px}
-.palette,.converter{margin-top:14px;padding:10px;border:1px solid #3d3d50;border-radius:10px;background:#222330}
-.palette h2,.favorites h2{font-size:12px;margin:0}.sv-field{position:relative;height:120px;margin-top:8px;border-radius:8px;border:1px solid #fff2;background:linear-gradient(to bottom,transparent,#000),linear-gradient(to right,#fff,transparent),var(--hue);cursor:crosshair;touch-action:none}
-.sv-thumb{position:absolute;width:14px;height:14px;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px #0008;transform:translate(-50%,-50%);pointer-events:none}
-.hue-field{position:relative;height:16px;margin-top:10px;border-radius:8px;border:1px solid #fff2;background:linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);cursor:pointer;touch-action:none}
-.hue-thumb{position:absolute;top:50%;width:12px;height:20px;border:2px solid #fff;border-radius:4px;box-shadow:0 0 0 1px #0008;transform:translate(-50%,-50%);pointer-events:none}
-.preset-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:5px;margin-top:4px}.preset-swatch{height:22px;border:1px solid #fff2;border-radius:5px;cursor:pointer}
-.favorite-button{font-size:16px;line-height:1}.color-input{width:100%;margin-top:8px;padding:7px 8px;border:1px solid #404052;border-radius:6px;background:#171821;color:#f8f7ff;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace}.color-input[aria-invalid="true"]{border-color:#f472b6}.invalid-hint{margin:5px 0 0;color:#f9a8d4;font-size:11px}
-.conversion-list{margin-top:8px;display:grid;gap:4px}.conversion-row{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:5px;background:#292a38}.conversion-name{flex:0 0 40px;color:#a78bfa;font-size:10px;font-weight:600}.conversion-row code{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e8e6f5;font-size:11px}.conversion-row button{border:1px solid #4b4b60;border-radius:5px;background:#35364a;color:#d6d2e8;font-size:10px;padding:3px 6px;cursor:pointer}
-.favorites{margin-top:14px}.history-item{display:flex;flex-direction:column;align-items:center;gap:3px;border:0;background:transparent;color:#c9c6d8;cursor:pointer;padding:0}.history-chip{display:block;width:25px;height:25px;border:2px solid #fff2;border-radius:6px;cursor:pointer}.history-hex{font-size:9px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.favorite-item{position:relative}.remove-favorite{position:absolute;top:-5px;right:-5px;width:16px;height:16px;padding:0;border:1px solid #6b6b80;border-radius:50%;background:#222330;color:#f8f7ff;font-size:11px;line-height:1;cursor:pointer}
+.picker { height: 100vh; min-height: 560px; padding: 16px; display: flex; flex-direction: column; gap: 10px; background: #14121F; color: #F4F2FB; font: 13px/1.45 Inter, system-ui, sans-serif; overflow: hidden; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+button:disabled, input:disabled { cursor: default; opacity: .45; }
+button:focus-visible, input:focus-visible, [role="slider"]:focus-visible { outline: 2px solid #A78BFA; outline-offset: 2px; }
+
+.topbar { flex: 0 0 40px; height: 40px; display: flex; align-items: center; gap: 10px; }
+.brand { width: 28px; height: 28px; border-radius: 9px; background: #8B5CF6; display: grid; place-items: center; }
+.brand svg { width: 16px; height: 16px; }
+.topbar h1 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: .01em; }
+.topbar-spacer { flex: 1; }
+.badge { font-size: 11px; font-weight: 500; padding: 3px 9px; border-radius: 10px; }
+.preview-badge { color: #C4B5FD; background: #2E2850; }
+.warn-badge { color: #FBBF24; background: #3A2E18; }
+.ready-dot { width: 8px; height: 8px; border-radius: 50%; background: #34D399; }
+.ready-text { font-size: 12px; color: #A6A2BD; }
+.gear svg { width: 18px; height: 18px; display: block; }
+
+.error { flex: 0 0 auto; border-radius: 10px; padding: 8px 12px; background: #32243A; color: #F5C7FA; font-size: 12px; }
+
+.workspace { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 378px minmax(0, 1fr); gap: 12px; }
+.col-left, .col-right { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+
+.hero { flex: 1 1 auto; min-height: 132px; position: relative; padding: 16px; border-radius: 14px; overflow: hidden; background: var(--hero-color); display: flex; flex-direction: column; justify-content: space-between; }
+.hero-top, .hero-bottom { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.hero-label { font-size: 12px; font-weight: 500; color: #FFFFFFCC; }
+.star-btn { border: 0; background: transparent; color: #FFFFFF; font-size: 20px; line-height: 1; cursor: pointer; padding: 0 2px; }
+.hero-hex { font-size: 27px; font-weight: 500; font-family: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .01em; color: #fff; overflow-wrap: anywhere; }
+.copy-hero { display: flex; align-items: center; gap: 7px; padding: 8px 11px; border: 1px solid #FFFFFF59; border-radius: 10px; background: #FFFFFF2B; color: #fff; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.copy-hero svg { width: 15px; height: 15px; }
+.hero-status { position: absolute; bottom: 5px; left: 16px; font-size: 10px; color: #D1FAE5; }
+
+.actions { flex: 0 0 46px; height: 46px; display: flex; gap: 10px; }
+.primary { flex: 1; display: flex; align-items: center; justify-content: center; gap: 9px; border: 0; border-radius: 12px; background: #A78BFA; color: #1A1230; font-size: 14px; font-weight: 600; cursor: pointer; }
+.primary svg { width: 18px; height: 18px; }
+.freeze-toggle { width: 140px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid #3A3552; border-radius: 12px; background: #1E1B2E; color: #C9C4DE; font-size: 13px; font-weight: 500; cursor: pointer; }
+.freeze-toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.freeze-toggle svg { width: 18px; height: 18px; }
+.hint-line { margin: 0; text-align: center; font-size: 11px; color: #6F6B86; }
+.notice { border-radius: 8px; padding: 6px 10px; background: #2A2130; color: #F5C7FA; font-size: 11px; }
+
+.permission-card { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #6B4A6B; border-radius: 12px; background: #2A2130; }
+.permission-card > svg { width: 22px; height: 22px; flex: 0 0 auto; }
+.permission-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.permission-copy strong { font-size: 12px; color: #FDE9B8; }
+.permission-copy span { font-size: 10px; color: #C7A9C0; }
+.grant-btn { flex: 0 0 auto; padding: 7px 11px; border: 0; border-radius: 9px; background: #FBBF24; color: #2A2130; font-size: 11px; font-weight: 600; cursor: pointer; }
+
+.intro { flex: 0 0 auto; }
+.muted { margin: 0 0 6px; font-size: 10px; color: #8E88A8; }
+.demo-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.demo-swatch { height: 26px; border: 1px solid #FFFFFF24; border-radius: 6px; cursor: pointer; }
+
+.palette { flex: 1 1 auto; min-height: 0; display: flex; gap: 12px; padding: 14px; border: 1px solid #2C2940; border-radius: 14px; background: #1B1929; }
+.sv-field { position: relative; flex: 0 0 210px; align-self: stretch; border-radius: 10px; border: 1px solid #FFFFFF20; background: linear-gradient(to bottom, transparent, #000), linear-gradient(to right, #fff, transparent), var(--hue); cursor: crosshair; touch-action: none; }
+.sv-thumb { position: absolute; width: 14px; height: 14px; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1px #0008; transform: translate(-50%, -50%); pointer-events: none; }
+.palette-side { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.hue-field { position: relative; flex: 0 0 18px; height: 18px; border-radius: 9px; border: 1px solid #FFFFFF20; background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); cursor: pointer; touch-action: none; }
+.hue-thumb { position: absolute; top: 50%; width: 12px; height: 20px; border: 2px solid #fff; border-radius: 5px; box-shadow: 0 0 0 1px #0008; transform: translate(-50%, -50%); pointer-events: none; }
+.input-label { font-size: 11px; font-weight: 500; color: #8E88A8; }
+.color-input { width: 100%; height: 40px; padding: 0 12px; border: 1px solid #3A3552; border-radius: 9px; background: #12111D; color: #F4F2FB; font: 14px/1.4 "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+.color-input[aria-invalid="true"] { border-color: #F472B6; }
+.invalid-hint { margin: 0; color: #F9A8D4; font-size: 10px; }
+.format-hint { margin: 0; color: #6F6B86; font-size: 10px; }
+
+.collection { flex: 0 0 200px; height: 200px; display: flex; flex-direction: column; border: 1px solid #2C2940; border-radius: 14px; background: #1B1929; overflow: hidden; }
+.tabbar { flex: 0 0 40px; height: 40px; display: flex; align-items: center; gap: 6px; padding: 0 12px; }
+.tab { height: 26px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent; color: #8E88A8; font-size: 12px; font-weight: 500; cursor: pointer; }
+.tab.active { background: #2E2850; color: #C4B5FD; font-weight: 600; }
+.tabbar-spacer { flex: 1; }
+.tabbar-hint { font-size: 11px; font-weight: 500; color: #8B5CF6; }
+.tabbody { flex: 1; min-height: 0; padding: 10px 14px; overflow: hidden; }
+
+.quick-row { display: flex; align-items: center; gap: 7px; margin-bottom: 9px; }
+.format-switch { display: flex; gap: 5px; }
+.format-switch button, .quick-copy { height: 26px; padding: 0 12px; border: 1px solid #3A3552; border-radius: 7px; background: #232134; color: #C9C4DE; font-size: 11px; font-weight: 600; cursor: pointer; }
+.format-switch button.active { border-color: #8B5CF6; background: #2E2850; color: #C4B5FD; }
+.quick-copy { margin-left: auto; }
+.conversion-grid { display: flex; flex-direction: column; gap: 7px; }
+.conversion-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.conversion-card { height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-radius: 8px; background: #232134; }
+.conversion-name { flex: 0 0 38px; color: #A78BFA; font-size: 10px; font-weight: 600; }
+.conversion-card code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #E8E5F5; font: 12px/1 "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+.conversion-card button { flex: 0 0 auto; border: 0; background: transparent; color: #8E88A8; font-size: 10px; cursor: pointer; padding: 2px; }
+
+.preset-panel { height: 100%; overflow: auto; }
+.preset-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 8px; }
+.preset-swatch { aspect-ratio: 1.5; border: 1px solid #FFFFFF24; border-radius: 6px; cursor: pointer; }
+
+.list-panel { height: 100%; overflow: auto; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.panel-head h2 { margin: 0; font-size: 12px; color: #D9D7E8; }
+.text-button { border: 0; background: transparent; color: #B7A9FB; font-size: 11px; cursor: pointer; }
+.history-grid { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 8px; }
+.history-item { display: flex; flex-direction: column; align-items: center; gap: 3px; border: 0; background: transparent; color: #C9C6D8; cursor: pointer; padding: 0; }
+.history-chip { display: block; width: 100%; aspect-ratio: 1.5; border: 1px solid #FFFFFF24; border-radius: 6px; cursor: pointer; }
+.history-hex { font-size: 9px; font-family: "Roboto Mono", ui-monospace, monospace; }
+.favorite-item { position: relative; }
+.remove-favorite { position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; padding: 0; border: 1px solid #6B6B80; border-radius: 50%; background: #222330; color: #F8F7FF; font-size: 11px; line-height: 1; cursor: pointer; }
+.empty { margin: 8px 0 0; color: #6F6B86; font-size: 11px; }
+
+.footer { flex: 0 0 22px; height: 22px; display: flex; align-items: center; justify-content: space-between; font-size: 10px; color: #6F6B86; }
+.footer-left { display: flex; align-items: center; gap: 7px; }
+.footer-left .dot { width: 6px; height: 6px; border-radius: 50%; background: #A78BFA; }
+.footer-right { color: #5C5872; }
 </style>
